@@ -1,0 +1,4 @@
+NitroPack/SDK/data/*
+!NitroPack/SDK/data/.gitignore
+composer.lock
+vendor/

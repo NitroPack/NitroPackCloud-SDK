@@ -1,0 +1,20 @@
+{
+    "name": "nitropack/nitropackcloud-sdk",
+    "description": "Client PHP SDK for NitroPack.io",
+    "license": "BSD-2-Clause",
+    "type" : "package",
+    "keywords": ["php", "sdk", "client", "library", "nitropack"],
+    "authors": [
+        {
+            "name": "NitroPack"
+        }
+    ],
+    "autoload" : {
+        "psr-4" : {
+            "NitroPack\\SDK\\" : "NitroPack/SDK/"
+        }
+    },
+    "require": {
+        "nitropack/httpclient": "~v1.0.0"
+    }
+}
