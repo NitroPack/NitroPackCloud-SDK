@@ -4,7 +4,7 @@ namespace NitroPack\SDK;
 use \NitroPack\Url\Url;
 
 class NitroPack {
-    const VERSION = '0.51.0';
+    const VERSION = '0.52.0';
     const PAGECACHE_LOCK_EXPIRATION_TIME = 300; // in seconds
     private $dataDir;
     private $cachePath = array('data', 'pagecache');
