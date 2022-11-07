@@ -178,7 +178,7 @@ class Api {
         }
     }
 
-    public function setWebhook($type, \NitroPack\Url $url) {
+    public function setWebhook($type, \NitroPack\Url\Url $url) {
         if (!in_array($type, $this->allowedWebhooks)) {
             throw new WebhookException("The webhook type '$type' is not supported!");
         }
