@@ -24,6 +24,7 @@ class NitroPack {
     private $config;
     private $device;
     private $api;
+    private $varnishProxyCacheHeaders = [];
 
     public $backlog;
     public $elementRevision;
@@ -570,15 +571,27 @@ class NitroPack {
         }
     }
 
+    public function setVarnishProxyCacheHeaders($newHeaders) {
+        $this->varnishProxyCacheHeaders = $newHeaders;
+    }
+
     public function purgeProxyCache($url = NULL) {
         if (!empty($this->config->CacheIntegrations)) {
             if (!empty($this->config->CacheIntegrations->Varnish)) {
                 if ($url) {
                     $url = $this->normalizeUrl($url);
-                    $varnish = new Integrations\Varnish($this->config->CacheIntegrations->Varnish->Servers, $this->config->CacheIntegrations->Varnish->PurgeSingleMethod);
+                    $varnish = new Integrations\Varnish(
+                        $this->config->CacheIntegrations->Varnish->Servers,
+                        $this->config->CacheIntegrations->Varnish->PurgeSingleMethod,
+                        $this->varnishProxyCacheHeaders
+                    );
                     $varnish->purge($url);
                 } else {
-                    $varnish = new Integrations\Varnish($this->config->CacheIntegrations->Varnish->Servers, $this->config->CacheIntegrations->Varnish->PurgeAllMethod);
+                    $varnish = new Integrations\Varnish(
+                        $this->config->CacheIntegrations->Varnish->Servers,
+                        $this->config->CacheIntegrations->Varnish->PurgeAllMethod,
+                        $this->varnishProxyCacheHeaders
+                    );
                     $varnish->purge($this->config->CacheIntegrations->Varnish->PurgeAllUrl);
                 }
             }
