@@ -38,7 +38,9 @@ class SignedBase extends Base {
         $url = new Url($this->baseUrl . $path);
         $noParamsPath = $url->getPath();
         $params = array();
-        parse_str($url->getQuery(), $params);
+        if(!is_null($url->getQuery())) {
+            parse_str($url->getQuery(), $params);
+        }
         $params = $params + $bodyData;
         $headers[SignedBase::$signatureHeader] = static::calculateRequestSignature($noParamsPath, $params, static::getSignatureHeaders($headers), $this->secret);
 
