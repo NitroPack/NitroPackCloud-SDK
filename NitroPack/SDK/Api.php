@@ -10,6 +10,8 @@ class Api {
     private $allowedWebhooks = array('config', 'cache_clear', 'cache_ready', 'sitemap');
     private $children;
     private $varnish;
+    private $excludedurls;
+    private $additionaldomains;
 
     public function __construct($siteId, $siteSecret) {
         $this->children = [];
@@ -25,6 +27,8 @@ class Api {
         $this->children["request_maker"] = new Api\RequestMaker($siteId);
         $this->children["secure_request_maker"] = new Api\SecureRequestMaker($siteId, $siteSecret);
         $this->children["varnish"] = new Api\Varnish($siteId, $siteSecret);
+        $this->children["excludedurls"] = new Api\ExcludedUrls($siteId, $siteSecret);
+        $this->children["additionaldomains"] = new Api\AdditionalDomains($siteId, $siteSecret);
 
         foreach ($this->children as $name=>$child) {
             $this->{$name} = $child;
@@ -298,5 +302,45 @@ class Api {
 
     public function configureVarnishIntegration($settings) {
         $this->varnish->configure($settings);
+    }
+
+    public function enableExcludedUrls()
+    {
+        $this->excludedurls->enable();
+    }
+
+    public function disableExcludedUrls()
+    {
+        $this->excludedurls->disable();
+    }
+
+    public function addExcludedUrl($urlPattern)
+    {
+        $this->excludedurls->add($urlPattern);
+    }
+
+    public function removeExcludedUrl($urlPattern)
+    {
+        $this->excludedurls->remove($urlPattern);
+    }
+
+    public function enableAdditionalDomains()
+    {
+        $this->additionaldomains->enable();
+    }
+
+    public function disableAdditionalDomains()
+    {
+        $this->additionaldomains->disable();
+    }
+
+    public function addAdditionalDomain($domain)
+    {
+        $this->additionaldomains->add($domain);
+    }
+
+    public function removeAdditionalDomain($domain)
+    {
+        $this->additionaldomains->remove($domain);
     }
 }
