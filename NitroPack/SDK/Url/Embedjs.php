@@ -1,7 +1,7 @@
 <?php
 namespace NitroPack\SDK\Url;
 
-use NitroPack\Url as BaseUrl;
+use NitroPack\Url\Url as BaseUrl;
 
 class Embedjs extends BaseUrl {
     const EMBEDJS_BASE = 'https://nitropack.io/asset/js';

@@ -2,9 +2,10 @@
 namespace NitroPack\SDK;
 
 use \NitroPack\Url\Url;
+use \NitroPack\SDK\Url\Embedjs;
 
 class NitroPack {
-    const VERSION = '0.53.0';
+    const VERSION = '0.53.1';
     const PAGECACHE_LOCK_EXPIRATION_TIME = 300; // in seconds
     private $dataDir;
     private $cachePath = array('data', 'pagecache');
@@ -832,7 +833,7 @@ class NitroPack {
     }
 
     public function embedJsUrl() {
-        $embedjs = new Url\Embedjs();
+        $embedjs = new Embedjs();
 
         return $embedjs->getUrl();
     }
