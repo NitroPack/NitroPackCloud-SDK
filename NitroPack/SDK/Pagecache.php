@@ -1,9 +1,11 @@
 <?php
+
 namespace NitroPack\SDK;
 
 use \NitroPack\Url\Url;
 
-class Pagecache {
+class Pagecache
+{
     protected $url;
     protected $cookies;
     protected $supportedCookies;
@@ -17,18 +19,19 @@ class Pagecache {
     private $urlPathVersion;
     private $cookiesProvider;
 
-    public static function getUrlDir($dataDir, $url, $useInvalidated = false, $pathVersion = 1) {
-        $safeUrl = str_replace(array('/','?',':',';','=','&','.','--','%','~'),'-', $url);
+    public static function getUrlDir($dataDir, $url, $useInvalidated = false, $pathVersion = 1)
+    {
+        $safeUrl = str_replace(array('/', '?', ':', ';', '=', '&', '.', '--', '%', '~'), '-', $url);
         if (defined('NITRO_DEBUG_MODE') && NITRO_DEBUG_MODE) {
             $urlDir = $dataDir . "/" . $safeUrl;
         } else {
             switch ($pathVersion) {
-            case 2:
-                $urlDir = $dataDir . "/" . md5($url);
-                break;
-            default:
-                $urlDir = $dataDir . "/" . md5($safeUrl);
-                break;
+                case 2:
+                    $urlDir = $dataDir . "/" . md5($url);
+                    break;
+                default:
+                    $urlDir = $dataDir . "/" . md5($safeUrl);
+                    break;
             }
         }
 
@@ -39,12 +42,14 @@ class Pagecache {
         }
     }
 
-    public function __construct($url, $userAgent, $cookies = array(), $supportedCookies = array(), $isAjax = false, $referer = NULL) {
+    public function __construct($url, $userAgent, $cookies = array(), $supportedCookies = array(), $isAjax = false, $referer = NULL)
+    {
         $this->url = new Url($url);
         $this->cookies = $cookies;
         $this->supportedCookies = $supportedCookies;
         $this->dataDir = NULL;
         $this->isAjax = $isAjax;
+        $this->parent = NULL;
         $this->Device = new Device($userAgent);
         $this->useCompression = false;
         $this->useInvalidated = false;
@@ -53,57 +58,69 @@ class Pagecache {
         $this->setReferer($referer);
     }
 
-    public function enableCompression() {
+    public function enableCompression()
+    {
         $this->useCompression = true;
         if ($this->parent) {
             $this->parent->enableCompression();
         }
     }
 
-    public function disableCompression() {
+    public function disableCompression()
+    {
         $this->useCompression = false;
         if ($this->parent) {
             $this->parent->disableCompression();
         }
     }
 
-    public function useInvalidated($useInvalidated) {
+    public function useInvalidated($useInvalidated)
+    {
         $this->useInvalidated = $useInvalidated;
         if ($this->parent) {
             $this->parent->useInvalidated($useInvalidated);
         }
     }
 
-    public function getUseInvalidated() {
+    public function getUseInvalidated()
+    {
         return $this->useInvalidated;
     }
 
-    public function setReferer($referer) {
+    public function setReferer($referer)
+    {
         $this->referer = $referer ? new Url($referer) : NULL;
         if ($this->referer) {
-            $this->parent = new Pagecache($this->referer->getUrl(), $this->Device->getUserAgent(), $this->cookies, $this->supportedCookies);
+            $this->parent = new Pagecache($this->referer->getNormalized(), $this->Device->getUserAgent(), $this->cookies, $this->supportedCookies);
             $this->parent->setUrlPathVersion($this->urlPathVersion);
+            if ($this->dataDir) {
+                $this->parent->setDataDir(dirname($this->dataDir));
+            }
         } else {
             $this->parent = NULL;
         }
     }
 
-    public function setUrlPathVersion($version = 1) {
+    public function setUrlPathVersion($version = 1)
+    {
         $this->urlPathVersion = $version;
         if ($this->parent) {
             $this->parent->setUrlPathVersion($version);
         }
     }
 
-    public function getReferer() {
+    public function getReferer()
+    {
         return $this->referer;
     }
 
-    public function getParent() {
+    public function getParent()
+    {
         return $this->parent;
     }
 
-    public function setDataDir($dir) {
+    public function setDataDir($dir)
+    {
         if ($dir === null) {
             $this->dataDir = null;
         } else {
@@ -115,11 +132,13 @@ class Pagecache {
         }
     }
 
-    public function setCookiesProvider($provider) {
+    public function setCookiesProvider($provider)
+    {
         $this->cookiesProvider = $provider;
     }
 
-    public function hasCache() {
+    public function hasCache()
+    {
         // If there is no cache for the parent we do not need to check cache existance for the current object, because we only serve AJAX cache for pages already cached by NitroPack
         if ($this->parent && !$this->parent->hasCache()) return false;
         if ($this->useInvalidated) {
@@ -130,7 +149,8 @@ class Pagecache {
         }
     }
 
-    public function hasExpired($ttl = 86400, $cacheRevision = NULL) {
+    public function hasExpired($ttl = 86400, $cacheRevision = NULL)
+    {
         // If the cache for the parent is expired we do not need to check cache for the current object, because we only serve AJAX cache for pages already cached by NitroPack
         if ($this->parent && $this->parent->hasExpired($ttl, $cacheRevision)) return true;
 
@@ -154,7 +174,11 @@ class Pagecache {
                     return true;
                 }
 
-                if (!empty($headers["x-cache-ctime"]) && $now - (int)$headers["x-cache-ctime"] > $ttl) {
+                if (
+                    !$this->useInvalidated &&
+                    !empty($headers["x-cache-ctime"]) &&
+                    $now - (int)$headers["x-cache-ctime"] > $ttl
+                ) {
                     return true;
                 }
 
@@ -166,10 +190,11 @@ class Pagecache {
                 return true;
             }
         }
-        return  false;
+        return false;
     }
 
-    public function getRemainingTtl($ttl = 86400) {
+    public function getRemainingTtl($ttl = 86400)
+    {
         // If there is a parent cache file return its remaining TTL
         if ($this->parent) return $this->parent->getRemainingTtl();
 
@@ -183,9 +208,9 @@ class Pagecache {
         try {
             $headers = Filesystem::fileGetHeaders($cachefilePath);
             if (!empty($headers["x-nitro-expires"])) {
-                $expireTime = (int) $headers["x-nitro-expires"];
+                $expireTime = (int)$headers["x-nitro-expires"];
             } else if (!empty($headers["x-cache-ctime"])) {
-                $expireTime = (int) $headers["x-cache-ctime"] + $ttl;
+                $expireTime = (int)$headers["x-cache-ctime"] + $ttl;
             } else {
                 $mtime = Filesystem::fileMtime($cachefilePath);
                 $expireTime = $mtime + $ttl;
@@ -199,7 +224,8 @@ class Pagecache {
         return 0;
     }
 
-    public function setContent($content, $headers = NULL) {
+    public function setContent($content, $headers = NULL)
+    {
         if (!$this->dataDir) return;
 
         $filePath = $this->getCachefilePath();
@@ -215,7 +241,8 @@ class Pagecache {
         }
     }
 
-    private function headersFlatten($headers) {
+    private function headersFlatten($headers)
+    {
         // The headers from fileGetAll come as associative array
         // They must be converted to an array of strings before being passed to filePutContents, which is what this function does
         $headersFlat = array();
@@ -232,7 +259,8 @@ class Pagecache {
         return $headersFlat;
     }
 
-    private function compress($filePath) {
+    private function compress($filePath)
+    {
         $fileInfo = Filesystem::fileGetAll($filePath);
         $fileInfo->headers["Content-Encoding"] = "gzip";
         $gzPath = $filePath . ".gz";
@@ -245,32 +273,52 @@ class Pagecache {
         return $res;
     }
 
-    public function readfile() {
+    public function readfile()
+    {
+        [ $headers, $contents ] = $this->returnCacheFileContent();
+
+        foreach ($headers as $header) {
+            header($header['name'] . ': ' . $header['value'], false);
+        }
+
+        echo $contents;
+    }
+
+    public function returnCacheFileContent()
+    {
         if ($this->useInvalidated) {
             $this->convertToStaleCache();
             $filePath = $this->getCachefilePath("stale");
         } else {
             $filePath = $this->getCachefilePath();
         }
-
         if ($this->canUseCompression() && (ini_get("zlib.output_compression") === "0" || ini_set("zlib.output_compression", "0") !== false)) {
             $filePath .= ".gz";
         }
         $file = Filesystem::fileGetAll($filePath);
+        $returnHeaders = [];
+
         foreach ($file->headers as $name => $value) {
             if (is_array($value)) {
                 foreach ($value as $subVal) {
-                    header($name . ": " . $subVal, false);
+                    $returnHeaders[] = [
+                        'name' => $name,
+                        'value' => $subVal
+                    ];
                 }
             } else {
-                header("$name: $value", false);
+                $returnHeaders[] = [
+                    'name' => $name,
+                    'value' => $value
+                ];
             }
         }
 
-        echo $file->content;
+        return [ $returnHeaders, $file->content ];
     }
 
-    public function getFileContents() {
+    public function getFileContents()
+    {
         if ($this->useInvalidated) {
             $this->convertToStaleCache();
             return Filesystem::fileGetContents($this->getCachefilePath("stale"));
@@ -278,7 +326,8 @@ class Pagecache {
         return Filesystem::fileGetContents($this->getCachefilePath());
     }
 
-    private function convertToStaleCache() {
+    private function convertToStaleCache()
+    {
         $staleFile = $this->getCachefilePath("stale");
         if (!Filesystem::fileExists($staleFile)) {
             $freshFile = $this->getCachefilePath();
@@ -293,17 +342,18 @@ class Pagecache {
         }
     }
 
-    private function cookiePrefix() {
+    private function cookiePrefix()
+    {
         $prefix = '';
 
         $cookies = $this->cookiesProvider ? call_user_func($this->cookiesProvider) : $this->cookies;
 
         ksort($cookies);
 
-        foreach ($cookies as $cookieName=>$cookieValue) {
+        foreach ($cookies as $cookieName => $cookieValue) {
             foreach ($this->supportedCookies as $cookie) {
                 if (preg_match('/' . NitroPack::wildcardToRegex($cookie) . '/', $cookieName)) {
-                    $prefix .= $cookieName.'='.$cookieValue.';';
+                    $prefix .= $cookieName . '=' . $cookieValue . ';';
                 }
             }
         }
@@ -311,36 +361,43 @@ class Pagecache {
         return substr(md5($prefix), 0, 16);
     }
 
-    private function sslPrefix() {
+    private function sslPrefix()
+    {
         return $this->url->getScheme() == "https" ? "ssl-" : "";
     }
 
-    private function ajaxPrefix() {
-        return $this->isAjax && $this->parent ? "ajax-" . md5($this->url->getUrl()) . "-" : "";
+    private function ajaxPrefix()
+    {
+        return $this->isAjax && $this->parent ? "ajax-" . md5($this->url->getNormalized()) . "-" : "";
     }
 
-    private function customCachePrefix() {
+    private function customCachePrefix()
+    {
         $customCachePrefix = NitroPack::getCustomCachePrefix();
         return $customCachePrefix ? $customCachePrefix . "-" : "";
     }
 
-    private function isCompressionAllowed() {
+    private function isCompressionAllowed()
+    {
         return isset($_SERVER['HTTP_ACCEPT_ENCODING']) && strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== false;
     }
 
-    private function canUseCompression() {
+    private function canUseCompression()
+    {
         return $this->useCompression && $this->isCompressionAllowed() && !headers_sent();
     }
 
-    public function nameOfCachefile() {
-        return  $this->customCachePrefix() . $this->ajaxPrefix() . $this->sslPrefix() . $this->cookiePrefix() . ".html";
+    public function nameOfCachefile()
+    {
+        return $this->customCachePrefix() . $this->ajaxPrefix() . $this->sslPrefix() . $this->cookiePrefix() . ".html";
     }
 
-    public function getCachefilePath($suffix = "") {
+    public function getCachefilePath($suffix = "")
+    {
         if ($suffix) $suffix = "." . $suffix;
         if ($this->isAjax && $this->referer) {
-            return self::getUrlDir($this->dataDir, $this->referer->getUrl(), $this->useInvalidated, $this->urlPathVersion) . "/" . $this->nameOfCachefile() . $suffix;
+            return self::getUrlDir($this->dataDir, $this->referer->getNormalized(), $this->useInvalidated, $this->urlPathVersion) . "/" . $this->nameOfCachefile() . $suffix;
         }
-        return self::getUrlDir($this->dataDir, $this->url->getUrl(), $this->useInvalidated, $this->urlPathVersion) . "/" . $this->nameOfCachefile() . $suffix;
+        return self::getUrlDir($this->dataDir, $this->url->getNormalized(), $this->useInvalidated, $this->urlPathVersion) . "/" . $this->nameOfCachefile() . $suffix;
     }
 }

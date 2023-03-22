@@ -14,10 +14,11 @@ class Cache extends SignedBase {
         $this->secret = $siteSecret;
     }
 
-    public function get($url, $userAgent, $cookies, $isAjax, $layout = 'default', $remoteAddr = NULL) {
+    public function get($url, $userAgent, $cookies, $isAjax, $layout = 'default', $remoteAddr = NULL, $referrer = NULL) {
         $this->isBacklogEnabled = false;
         $path = 'cache/get/' . $this->siteId . '/' . $layout;
         $remoteAddr = $remoteAddr ? $remoteAddr : NitroPack::getRemoteAddr();
+
         $headers = array(
             'X-Nitro-Url' => $url,
             'X-Nitro-Visitor-Addr' => $remoteAddr,
@@ -31,6 +32,10 @@ class Cache extends SignedBase {
 
         if ($isAjax) {
             $headers['X-Nitro-Ajax'] = 1;
+        }
+
+        if ($referrer) {
+            $headers['Referer'] = $referrer;
         }
 
         if ($this->isCacheWarmupRequest()) {
@@ -62,7 +67,7 @@ class Cache extends SignedBase {
         }
     }
 
-    public function purge($url = NULL, $pagecacheOnly = false, $reason = NULL) {
+    public function purge($url = NULL, $pagecacheOnly = false, $reason = NULL, $lightPurge = false) {
         $this->isBacklogEnabled = true;
         $path = 'cache/purge/' . $this->siteId;
 
@@ -73,7 +78,7 @@ class Cache extends SignedBase {
             $retries = new \SplObjectStorage();
             $httpMulti = new HttpClientMulti();
             
-            $httpMulti->onSuccess(function($client) use ($path, &$url, &$requests, $httpMulti, $cache, $reason) {
+            $httpMulti->onSuccess(function($client) use ($path, &$url, &$requests, $httpMulti, $cache, $reason, $lightPurge) {
                 if ($client->getStatusCode() >= 500 && !empty($client->backlogEntry)) {
                     $this->addToBacklog($client->backlogEntry);
                     $this->nitropack && $this->nitropack->setHealthStatus(HealthStatus::UNDER_THE_WEATHER);
@@ -87,7 +92,9 @@ class Cache extends SignedBase {
                     if ($reason) {
                         $params["reason"] = $reason;
                     }
-
+                    if ($lightPurge) {
+                        $params["light_purge"] = $lightPurge;
+                    }
                     $httpClient = $cache->makeRequestAsync($path, array(), array(), 'POST', $params);
                     $httpMulti->push($httpClient);
                     $requests[] = $httpClient;
@@ -127,6 +134,9 @@ class Cache extends SignedBase {
 
                 if ($reason) {
                     $params["reason"] = $reason;
+                }
+                if ($lightPurge) {
+                    $params["light_purge"] = $lightPurge;
                 }
 
                 try {
@@ -172,6 +182,9 @@ class Cache extends SignedBase {
             if ($reason) {
                 $params["reason"] = $reason;
             }
+            if ($lightPurge) {
+                $params["light_purge"] = $lightPurge;
+            }
 
             try {
                 $httpResponse = $this->makeRequest($path, array(), array(), 'POST', $params);
@@ -191,7 +204,7 @@ class Cache extends SignedBase {
         return false;
     }
 
-    public function purgeByTag($tag, $reason = NULL) {
+    public function purgeByTag($tag, $reason = NULL, $lightPurge = false) {
         $this->isBacklogEnabled = true;
         $path = 'cache/purge/' . $this->siteId;
         
@@ -201,6 +214,10 @@ class Cache extends SignedBase {
 
         if ($reason) {
             $params["reason"] = $reason;
+        }
+
+        if ($lightPurge) {
+            $params["light_purge"] = $lightPurge;
         }
 
         try {

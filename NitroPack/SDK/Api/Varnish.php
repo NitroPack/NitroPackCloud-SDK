@@ -45,10 +45,10 @@ class Varnish extends SignedBase
         $path = 'varnish/configure/' . $this->siteId;
 
         $post = [
-            'Servers' => $settings['Servers'] ?? [],
-            'PurgeAllUrl' => $settings['PurgeAllUrl'] ?? '',
-            'PurgeAllMethod' => $settings['PurgeAllMethod'] ?? '',
-            'PurgeSingleMethod' => $settings['PurgeSingleMethod'] ?? '',
+            'Servers' => !empty($settings['Servers']) ? $settings['Servers'] : [],
+            'PurgeAllUrl' => !empty($settings['PurgeAllUrl']) ? $settings['PurgeAllUrl'] : '',
+            'PurgeAllMethod' => !empty($settings['PurgeAllMethod']) ? $settings['PurgeAllMethod'] : '',
+            'PurgeSingleMethod' => !empty($settings['PurgeSingleMethod']) ? $settings['PurgeSingleMethod'] : '',
         ];
 
         $httpResponse = $this->makeRequest($path, array(), array(), 'POST', $post);

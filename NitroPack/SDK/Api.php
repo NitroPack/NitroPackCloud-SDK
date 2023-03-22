@@ -4,9 +4,6 @@ namespace NitroPack\SDK;
 use \NitroPack\SDK\Website as Website;
 
 class Api {
-    private $cache;
-    private $tagger;
-    private $url;
     private $allowedWebhooks = array('config', 'cache_clear', 'cache_ready', 'sitemap');
     private $children;
     private $varnish;
@@ -29,10 +26,10 @@ class Api {
         $this->children["varnish"] = new Api\Varnish($siteId, $siteSecret);
         $this->children["excludedurls"] = new Api\ExcludedUrls($siteId, $siteSecret);
         $this->children["additionaldomains"] = new Api\AdditionalDomains($siteId, $siteSecret);
+    }
 
-        foreach ($this->children as $name=>$child) {
-            $this->{$name} = $child;
-        }
+    public function __get($prop) {
+        return !empty($this->children[$prop]) ? $this->children[$prop] : NULL;
     }
 
     public function setBacklog($backlog) {
@@ -47,20 +44,20 @@ class Api {
         }
     }
 
-    public function getCache($url, $userAgent, $cookies, $isAjax, $layout) {
-        return $this->cache->get($url, $userAgent, $cookies, $isAjax, $layout);
+    public function getCache($url, $userAgent, $cookies, $isAjax, $layout, $referer) {
+        return $this->cache->get($url, $userAgent, $cookies, $isAjax, $layout, NULL, $referer);
     }
 
     public function getLastCachePurge() {
         return $this->cache->getLastPurge();
     }
 
-    public function purgeCache($url = NULL, $pagecacheOnly = false, $reason = NULL) {
-        return $this->cache->purge($url, $pagecacheOnly, $reason);
+    public function purgeCache($url = NULL, $pagecacheOnly = false, $reason = NULL, $lightPurge = false) {
+        return $this->cache->purge($url, $pagecacheOnly, $reason, $lightPurge);
     }
 
-    public function purgeCacheByTag($tag, $reason = NULL) {
-        return $this->cache->purgeByTag($tag, $reason);
+    public function purgeCacheByTag($tag, $reason = NULL, $lightPurge = false) {
+        return $this->cache->purgeByTag($tag, $reason, $lightPurge);
     }
 
     public function getUrls($page = 1, $limit = 250, $search = NULL, $deviceType = NULL, $status = NULL) {

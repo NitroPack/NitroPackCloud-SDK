@@ -1,7 +1,7 @@
 <?php
 namespace NitroPack\SDK\Api;
 
-class SafeMode extends Base {
+class SafeMode extends SignedBase {
     public function status() {
         $path = 'safemode/status/' . $this->siteId;
 

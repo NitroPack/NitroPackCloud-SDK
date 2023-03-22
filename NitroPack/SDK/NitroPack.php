@@ -5,7 +5,7 @@ use \NitroPack\Url\Url;
 use \NitroPack\SDK\Url\Embedjs;
 
 class NitroPack {
-    const VERSION = '0.53.1';
+    const VERSION = '0.54.0';
     const PAGECACHE_LOCK_EXPIRATION_TIME = 300; // in seconds
     private $dataDir;
     private $cachePath = array('data', 'pagecache');
@@ -26,11 +26,13 @@ class NitroPack {
     private $device;
     private $api;
     private $varnishProxyCacheHeaders = [];
+    private $referer;
 
     public $backlog;
     public $elementRevision;
     public $healthStatus;
     public $pageCache; // TODO: consider better ways of protecting/providing this outside the class
+    public $useCompression;
 
     private static $cachePrefixes = array();
     private static $cookieFilters = array();
@@ -102,11 +104,12 @@ class NitroPack {
         }
     }
 
-    public function __construct($siteId, $siteSecret, $userAgent = NULL, $url = NULL, $dataDir = __DIR__) {
+    public function __construct($siteId, $siteSecret, $userAgent = NULL, $url = NULL, $dataDir = __DIR__, $referer = NULL) {
         $this->configTTL = 3600;
         $this->siteId = $siteId;
         $this->siteSecret = $siteSecret;
         $this->dataDir = $dataDir;
+        $this->referer = $referer;
         $this->backlog = new Backlog($dataDir, $this);
         $this->elementRevision = new ElementRevision($siteId, $this->getStatefulCacheRevisionFile());
         $this->healthStatus = HealthStatus::HEALTHY;
@@ -154,7 +157,7 @@ class NitroPack {
 
         $this->pageCache = new Pagecache($this->url, $this->userAgent, $this->supportedCookiesFilter(self::getCookies()), $this->config->PageCache->SupportedCookies, $this->isAJAXRequest());
         $this->pageCache->setCookiesProvider([$this, "getPagecacheCookies"]);
-        if ($this->isAJAXRequest() && $this->isAllowedAJAXUrl($this->url) && !empty($_SERVER["HTTP_REFERER"])) {
+        if ($this->isAJAXRequest() && $this->isAllowedAJAXUrl($this->url) && !empty($_SERVER["HTTP_REFERER"]) && !$this->isAllowedStandaloneAJAXUrl($url)) {
             $refererInfo = new Url($_SERVER["HTTP_REFERER"]);
             $this->pageCache->setReferer($refererInfo->getNormalized());
         }
@@ -170,6 +173,12 @@ class NitroPack {
         $this->pageCache->setDataDir($this->getCacheDir());
 
         $this->useCompression = false;
+    }
+
+    public function setReferer($referer) {
+        $refererInfo = new Url($referer);
+        $this->referer = $refererInfo->getNormalized();
+        $this->pageCache->setReferer($this->referer);
     }
 
     public function getPagecacheCookies() {
@@ -354,9 +363,14 @@ class NitroPack {
 
     public function hasRemoteCache($layout, $checkIfRequestIsAllowed = true) {
         if ($this->backlog->exists()) return false;
-        if (!$this->isAllowedUrl($this->url) || ($checkIfRequestIsAllowed && !$this->isAllowedRequest()) || $this->isPageCacheLocked()) return false;
-        $resp = $this->api->getCache($this->url, $this->userAgent, $this->supportedCookiesFilter(self::getCookies()), $this->isAJAXRequest(), $layout);
+        if (
+            !$this->isAllowedUrl($this->url) ||
+            ($checkIfRequestIsAllowed && !$this->isAllowedRequest()) ||
+            ($this->pageCache->getParent() && !$this->pageCache->getParent()->hasCache()) ||
+            $this->isPageCacheLocked()
+        ) return false;
 
+        $resp = $this->api->getCache($this->url, $this->userAgent, $this->supportedCookiesFilter(self::getCookies()), $this->isAJAXRequest(), $layout, $this->referer);
         if ($resp->getStatus() == Api\ResponseStatus::OK) {// We have cache response
 
             // Check for invalidated cache and delete it if such is found
@@ -410,6 +424,7 @@ class NitroPack {
         try {
             $invalidate = !!($purgeType & PurgeType::INVALIDATE);
             $pageCacheOnly = !!($purgeType & PurgeType::PAGECACHE_ONLY);
+            $lightPurge = !!($purgeType & PurgeType::LIGHT_PURGE);
 
             if ($url || $tag) {
                 $localResult = true;
@@ -434,7 +449,7 @@ class NitroPack {
                     }
 
                     try {
-                        $apiResult &= $this->api->purgeCache($url, false, $reason);
+                        $apiResult &= $this->api->purgeCache($url, false, $reason, $lightPurge);
                     } catch (ServiceDownException $e) {
                         $apiResult = false;
                         // TODO: Potentially log this
@@ -472,12 +487,12 @@ class NitroPack {
             } else {
                 if ($invalidate) {
                     $localResult = $this->invalidateLocalCache();
-                    $apiResult = $this->api->purgeCache(NULL, $pageCacheOnly, $reason); // delete only page cache
+                    $apiResult = $this->api->purgeCache(NULL, $pageCacheOnly, $reason, $lightPurge); // delete only page cache
                 } else {
                     $staleCacheDir = $this->purgeLocalCache(true);
 
                     // Call the cache purge method
-                    $apiResult = $this->api->purgeCache(NULL, $pageCacheOnly, $reason);
+                    $apiResult = $this->api->purgeCache(NULL, $pageCacheOnly, $reason, $lightPurge);
 
                     // Finally, delete the files of the stale directory
                     Filesystem::deleteDir($staleCacheDir);
@@ -709,7 +724,10 @@ class NitroPack {
     }
 
     public function isAJAXRequest() { 
-        return !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest';
+        return 
+            (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') ||
+            $this->isAllowedAJAXUrl($this->url) ||
+            $this->isAllowedStandaloneAJAXUrl($this->url);
     }
 
     public function isRequestMethod($method) {
@@ -717,8 +735,10 @@ class NitroPack {
     }
 
     public function isAllowedAJAX() {
-        if (!$this->pageCache->getParent()) return false;
-        if (!$this->pageCache->getParent()->hasCache() || $this->pageCache->getParent()->hasExpired($this->config->PageCache->ExpireTime)) return false;
+        if (!$this->isAllowedStandaloneAJAXUrl($this->url)) {
+            if (!$this->pageCache->getParent()) return false;
+            if (!$this->pageCache->getParent()->hasCache() || $this->pageCache->getParent()->hasExpired($this->config->PageCache->ExpireTime)) return false;
+        }
         return true;
     }
 
@@ -732,6 +752,21 @@ class NitroPack {
                     }
                 }
                 return false;
+            }
+        }
+        return false;
+    }
+
+    public function isAllowedStandaloneAJAXUrl($url)
+    {
+        if ($this->config->AjaxURLs->Status) {
+            if (!empty($this->config->AjaxURLs->StandaloneURLs)) {
+                foreach ($this->config->AjaxURLs->StandaloneURLs as $ajaxUrl) {
+                    $ajaxUrlModified = preg_replace("/^(https?:)?\/\//", "*", $ajaxUrl);
+                    if (preg_match('/^' . self::wildcardToRegex($ajaxUrlModified) . '$/', $url)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -753,7 +788,8 @@ class NitroPack {
                     }
                 }
 
-                $cookieKey = 'np-' . $selector->type . '-' . base64_encode($selector->string) . '-override';
+                $selectorEncoded = str_replace("=", "", base64_encode($selector->string)); // base64 can produce == at the end which breaks is invalid for a cookie name, hence why we need to remove it
+                $cookieKey = 'np-' . $selector->type . '-' . $selectorEncoded . '-override';
                 if (empty($_COOKIE[$cookieKey]) || $_COOKIE[$cookieKey] != $this->elementRevision->get()) {
                     return false;
                 }

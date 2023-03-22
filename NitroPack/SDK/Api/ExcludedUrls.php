@@ -22,7 +22,7 @@ class ExcludedUrls extends SignedBase
             case ResponseStatus::OK:
                 return true;
             default:
-                $this->throwException($httpResponse, 'Error while enabling Varnish integration: %s');
+                $this->throwException($httpResponse, 'Error while enabling Excluded Urls: %s');
         }
     }
 
@@ -37,7 +37,7 @@ class ExcludedUrls extends SignedBase
             case ResponseStatus::OK:
                 return true;
             default:
-                $this->throwException($httpResponse, 'Error while disabling Varnish integration: %s');
+                $this->throwException($httpResponse, 'Error while disabling Excluded Urls: %s');
         }
     }
 

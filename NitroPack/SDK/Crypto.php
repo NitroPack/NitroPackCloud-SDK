@@ -24,17 +24,17 @@ class Crypto {
     }
 
     public static function encrypt($data, $publicKey) {
-        if (openssl_seal($data, $encrypted, $envKeys, array($publicKey))) {
-            return base64_encode($envKeys[0]) . "---END ENVKEY---" . base64_encode($encrypted);
+        if (openssl_seal($data, $encrypted, $envKeys, array($publicKey), "aes256", $iv)) {
+            return base64_encode($envKeys[0]) . "---END ENVKEY---" . base64_encode($encrypted) . "---END ENVKEY---" . base64_encode($iv);
         }
 
         return "";
     }
 
     public static function decrypt($data, $privateKey) {
-        list($envKey, $sealedData) = array_map('base64_decode', explode("---END ENVKEY---", $data));
+        list($envKey, $sealedData, $iv) = array_map('base64_decode', explode("---END ENVKEY---", $data));
 
-        if (openssl_open($sealedData, $decrypted, $envKey, $privateKey)) {
+        if (openssl_open($sealedData, $decrypted, $envKey, $privateKey, "aes256", $iv)) {
             return $decrypted;
         }
 
