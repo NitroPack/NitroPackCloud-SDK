@@ -1,16 +1,16 @@
 <?php
+
 namespace NitroPack\SDK;
 
 use \NitroPack\SDK\Website as Website;
 
-class Api {
+class Api
+{
     private $allowedWebhooks = array('config', 'cache_clear', 'cache_ready', 'sitemap');
     private $children;
-    private $varnish;
-    private $excludedurls;
-    private $additionaldomains;
 
-    public function __construct($siteId, $siteSecret) {
+    public function __construct($siteId, $siteSecret)
+    {
         $this->children = [];
         $this->children["cache"] = new Api\Cache($siteId, $siteSecret);
         $this->children["tagger"] = new Api\Tagger($siteId, $siteSecret);
@@ -28,57 +28,69 @@ class Api {
         $this->children["additionaldomains"] = new Api\AdditionalDomains($siteId, $siteSecret);
     }
 
-    public function __get($prop) {
+    public function __get($prop)
+    {
         return !empty($this->children[$prop]) ? $this->children[$prop] : NULL;
     }
 
-    public function setBacklog($backlog) {
+    public function setBacklog($backlog)
+    {
         foreach ($this->children as $child) {
             $child->setBacklog($backlog);
         }
     }
 
-    public function setNitroPack($nitropack) {
+    public function setNitroPack($nitropack)
+    {
         foreach ($this->children as $child) {
             $child->setNitroPack($nitropack);
         }
     }
 
-    public function getCache($url, $userAgent, $cookies, $isAjax, $layout, $referer) {
+    public function getCache($url, $userAgent, $cookies, $isAjax, $layout, $referer)
+    {
         return $this->cache->get($url, $userAgent, $cookies, $isAjax, $layout, NULL, $referer);
     }
 
-    public function getLastCachePurge() {
+    public function getLastCachePurge()
+    {
         return $this->cache->getLastPurge();
     }
 
-    public function purgeCache($url = NULL, $pagecacheOnly = false, $reason = NULL, $lightPurge = false) {
+    public function purgeCache($url = NULL, $pagecacheOnly = false, $reason = NULL, $lightPurge = false)
+    {
         return $this->cache->purge($url, $pagecacheOnly, $reason, $lightPurge);
     }
 
-    public function purgeCacheByTag($tag, $reason = NULL, $lightPurge = false) {
+    public function purgeCacheByTag($tag, $reason = NULL, $lightPurge = false)
+    {
         return $this->cache->purgeByTag($tag, $reason, $lightPurge);
     }
 
-    public function getUrls($page = 1, $limit = 250, $search = NULL, $deviceType = NULL, $status = NULL) {
+    public function getUrls($page = 1, $limit = 250, $search = NULL, $deviceType = NULL, $status = NULL)
+    {
         return $this->url->get($page, $limit, $search, $deviceType, $status);
     }
 
-    public function getUrlsCount($search = NULL, $deviceType = NULL, $status = NULL) {
+    public function getUrlsCount($search = NULL, $deviceType = NULL, $status = NULL)
+    {
         $resp = $this->url->count($search, $deviceType, $status);
         return (int)$resp["count"];
     }
 
-    public function getPendingUrls($page = 1, $limit = 250, $priority = NULL) {
+    public function getPendingUrls($page = 1, $limit = 250, $priority = NULL)
+    {
         return $this->url->getpending($page, $limit, $priority);
     }
 
-    public function getPendingUrlsCount($priority = NULL) {
+    public function getPendingUrlsCount($priority = NULL)
+    {
         $resp = $this->url->pendingCount($priority);
         return (int)$resp["count"];
     }
 
-    public function tagUrl($url, $tag) {
+    public function tagUrl($url, $tag)
+    {
         $resp = @json_decode($this->tagger->tag($url, $tag)->getBody());
         if ($resp && !$resp->success) {
             $msg = $resp->error ? $resp->error : "Unable to tag URL";
@@ -88,69 +100,85 @@ class Api {
         return true;
     }
 
-    public function untagUrl($url, $tag) {
+    public function untagUrl($url, $tag)
+    {
         $resp = json_decode($this->tagger->remove($url, $tag)->getBody(), true);
         return $resp['removed'];
     }
 
-    public function getTaggedUrls($tag, $page = 1, $limit = 250) {
+    public function getTaggedUrls($tag, $page = 1, $limit = 250)
+    {
         return $this->tagger->getUrls($tag, $page, $limit);
     }
 
-    public function getTaggedUrlsCount($tag) {
+    public function getTaggedUrlsCount($tag)
+    {
         $resp = $this->tagger->getUrlsCount($tag);
         return (int)$resp["count"];
     }
 
-    public function getTags($url = NULL, $page = 1, $limit = 250) {
+    public function getTags($url = NULL, $page = 1, $limit = 250)
+    {
         return $this->tagger->getTags($url, $page, $limit);
     }
 
-    public function getSavings() {
+    public function getSavings()
+    {
         return $this->stats->getSavings();
     }
 
-    public function getDiskUsage() {
+    public function getDiskUsage()
+    {
         return $this->stats->getDiskUsage();
     }
 
-    public function getRequestUsage() {
+    public function getRequestUsage()
+    {
         return $this->stats->getRequestUsage();
     }
 
-    public function resetSavingsStats() {
+    public function resetSavingsStats()
+    {
         return $this->stats->resetSavings();
     }
 
-    public function enableWarmup() {
+    public function enableWarmup()
+    {
         return $this->warmup->enable();
     }
 
-    public function disableWarmup() {
+    public function disableWarmup()
+    {
         return $this->warmup->disable();
     }
 
-    public function resetWarmup() {
+    public function resetWarmup()
+    {
         return $this->warmup->reset();
     }
 
-    public function setWarmupSitemap($url) {
+    public function setWarmupSitemap($url)
+    {
         return $this->warmup->setSitemap($url);
     }
 
-    public function unsetWarmupSitemap() {
+    public function unsetWarmupSitemap()
+    {
         return $this->warmup->setSitemap(NULL);
     }
 
-    public function setWarmupHomepage($url) {
+    public function setWarmupHomepage($url)
+    {
         return $this->warmup->setHomepage($url);
     }
 
-    public function unsetWarmupHomepage() {
+    public function unsetWarmupHomepage()
+    {
         return $this->warmup->setHomepage(NULL);
     }
 
-    public function estimateWarmup($id = NULL, $urls = NULL) {
+    public function estimateWarmup($id = NULL, $urls = NULL)
+    {
         $resp = $this->warmup->estimate($id, $urls);
         if ($id) {
             return (int)$resp["count"];
@@ -159,15 +187,18 @@ class Api {
         }
     }
 
-    public function runWarmup($urls = NULL, $force = false) {
+    public function runWarmup($urls = NULL, $force = false)
+    {
         return $this->warmup->run($urls, $force);
     }
 
-    public function getWarmupStats() {
+    public function getWarmupStats()
+    {
         return $this->warmup->stats();
     }
 
-    public function unsetWebhook($type) {
+    public function unsetWebhook($type)
+    {
         if (!in_array($type, $this->allowedWebhooks)) {
             throw new WebhookException("The webhook type '$type' is not supported!");
         }
@@ -179,7 +210,8 @@ class Api {
         }
     }
 
-    public function setWebhook($type, \NitroPack\Url\Url $url) {
+    public function setWebhook($type, \NitroPack\Url\Url $url)
+    {
         if (!in_array($type, $this->allowedWebhooks)) {
             throw new WebhookException("The webhook type '$type' is not supported!");
         }
@@ -195,7 +227,8 @@ class Api {
         }
     }
 
-    public function getWebhook($type) {
+    public function getWebhook($type)
+    {
         if (!in_array($type, $this->allowedWebhooks)) {
             throw new WebhookException("The webhook type '$type' is not supported!");
         }
@@ -208,7 +241,8 @@ class Api {
         }
     }
 
-    public function setVariationCookie($name, $values = array(), $group = null) {
+    public function setVariationCookie($name, $values = array(), $group = null)
+    {
         if (!is_array($values) && !is_string($values)) {
             throw new VariationCookieException("The provided values is not an array or a string.");
         } else if (is_array($values)) {
@@ -234,7 +268,8 @@ class Api {
         }
     }
 
-    public function unsetVariationCookie($name) {
+    public function unsetVariationCookie($name)
+    {
         if (!is_string($name) || trim($name) == "") {
             throw new VariationCookieException("The provided cookie name is not a string or is empty.");
         }
@@ -246,7 +281,8 @@ class Api {
         }
     }
 
-    public function getVariationCookies() {
+    public function getVariationCookies()
+    {
         try {
             return $this->variation_cookie->get();
         } catch (\RuntimeException $e) {
@@ -254,50 +290,61 @@ class Api {
         }
     }
 
-    public function createWebsite(Website $website) {
+    public function createWebsite(Website $website)
+    {
         return $this->integration->create($website);
     }
 
-    public function updateWebsite(Website $website) {
+    public function updateWebsite(Website $website)
+    {
         return $this->integration->update($website);
     }
 
-    public function removeWebsite($apikey) {
+    public function removeWebsite($apikey)
+    {
         return $this->integration->remove($apikey);
     }
 
     // Get a single website via API key
-    public function getWebsiteByAPIKey($apikey) {
+    public function getWebsiteByAPIKey($apikey)
+    {
         return $this->integration->readByAPIKey($apikey);
     }
 
     // Get all websites, along with a corresponding pagination
-    public function getWebsitesPaginated($page, $limit = 250) {
+    public function getWebsitesPaginated($page, $limit = 250)
+    {
         return $this->integration->readPaginated($page, $limit);
     }
 
-    public function isSafeModeEnabled() {
+    public function isSafeModeEnabled()
+    {
         $status = $this->safe_mode->status();
         return !empty($status->isEnabled);
     }
 
-    public function enableCartCache() {
+    public function enableCartCache()
+    {
         $this->cache->enableCartCache();
     }
 
-    public function disableCartCache() {
+    public function disableCartCache()
+    {
         $this->cache->disableCartCache();
     }
 
-    public function enableVarnishIntegration() {
+    public function enableVarnishIntegration()
+    {
         $this->varnish->enable();
     }
 
-    public function disableVarnishIntegration() {
+    public function disableVarnishIntegration()
+    {
         $this->varnish->disable();
     }
 
-    public function configureVarnishIntegration($settings) {
+    public function configureVarnishIntegration($settings)
+    {
         $this->varnish->configure($settings);
     }
 
