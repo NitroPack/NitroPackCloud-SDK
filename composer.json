@@ -15,6 +15,6 @@
         }
     },
     "require": {
-        "nitropack/httpclient": "~v1.0.0"
+        "nitropack/httpclient": "~v1.1.0"
     }
 }
