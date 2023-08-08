@@ -390,10 +390,7 @@ nitropack_handle_request();
 if ( null !== $nitro = nitropack_get_instance() ) {
     if ($nitro->isAllowedUrl($nitro->getUrl()) && $nitro->isAllowedRequest(true)) {
         nitropack_init_webhooks();
-        ob_start();
-        register_shutdown_function(function() {
-            $buffer = ob_get_clean();
-
+        ob_start(function($buffer) {
             if (nitropack_is_optimizer_request()) {
                 nitropack_add_tag(NULL, true); // Flush registered tags
             }
@@ -402,16 +399,21 @@ if ( null !== $nitro = nitropack_get_instance() ) {
             $bom = pack('H*','EFBBBF');
             $buffer = preg_replace("/^($bom)*/", '', $buffer);
 
-            if (stripos($buffer, "</body>") !== FALSE) {
-                // Append before </body>
-                $buffer = str_replace("</body>", nitropack_get_beacon_script() . "</body>", $buffer);
-            } else {
-                // Append at the end of the output
-                $buffer .= nitropack_get_beacon_script();
+            // Get the content type
+            $respHeaders = headers_list();
+            $contentType = NULL;
+            foreach ($respHeaders as $respHeader) {
+                if (stripos(trim($respHeader), 'Content-Type:') === 0) {
+                    $contentType = $respHeader;
+                }
+            }
+    
+            if (stripos($contentType, 'text/html') !== false && !preg_match("/<html.*?\s(amp|⚡)(\s|=|>)/", $buffer)) {
+                $buffer = str_replace("</body", nitropack_get_beacon_script() . "</body", $buffer);
             }
 
-            echo $buffer;
-        });
+            return $buffer;
+        }, 0, PHP_OUTPUT_HANDLER_FLUSHABLE | PHP_OUTPUT_HANDLER_REMOVABLE);
     } else {
         header("X-Nitro-Disabled: 1");
     }
