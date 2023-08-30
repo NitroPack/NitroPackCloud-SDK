@@ -275,7 +275,9 @@ class Pagecache
 
     public function readfile()
     {
-        [ $headers, $contents ] = $this->returnCacheFileContent();
+        $cacheFileContent = $this->returnCacheFileContent();
+        $headers = $cacheFileContent[0];
+        $contents = $cacheFileContent[1];
 
         foreach ($headers as $header) {
             header($header['name'] . ': ' . $header['value'], false);
