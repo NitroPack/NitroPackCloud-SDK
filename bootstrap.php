@@ -408,7 +408,13 @@ if ( null !== $nitro = nitropack_get_instance() ) {
                 }
             }
     
-            if (stripos($contentType, 'text/html') !== false && !preg_match("/<html.*?\s(amp|⚡)(\s|=|>)/", $buffer)) {
+            // If the content type header was detected and it's value does not contain 'text/html',
+            // don't attach the beacon script.
+            if ($contentType !== NULL && stripos($contentType, 'text/html') === false) {
+                return $buffer;
+            }
+
+            if (!preg_match("/<html.*?\s(amp|⚡)(\s|=|>)/", $buffer)) {
                 $buffer = str_replace("</body", nitropack_get_beacon_script() . "</body", $buffer);
             }
 
