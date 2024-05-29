@@ -26,6 +26,7 @@ class Api
         $this->children["varnish"] = new Api\Varnish($siteId, $siteSecret);
         $this->children["excludedurls"] = new Api\ExcludedUrls($siteId, $siteSecret);
         $this->children["additionaldomains"] = new Api\AdditionalDomains($siteId, $siteSecret);
+        $this->children["excludes"] = new Api\Excludes($siteId, $siteSecret);
     }
 
     public function __get($prop)
@@ -50,6 +51,11 @@ class Api
     public function getCache($url, $userAgent, $cookies, $isAjax, $layout, $referer)
     {
         return $this->cache->get($url, $userAgent, $cookies, $isAjax, $layout, NULL, $referer);
+    }
+
+    public function getCacheMulti($urls, $userAgent, $cookies, $isAjax, $layout, $referer)
+    {
+        return $this->cache->getMulti($urls, $userAgent, $cookies, $isAjax, $layout, NULL, $referer);
     }
 
     public function getLastCachePurge()
@@ -216,7 +222,7 @@ class Api
             throw new WebhookException("The webhook type '$type' is not supported!");
         }
 
-        if (!filter_var($url->getUrl(), FILTER_VALIDATE_URL)) {
+        if (!$url->isValid()) {
             throw new WebhookException(sprintf("The webhook URL '%s' is invalid!", $url->getUrl()));
         }
 
@@ -348,6 +354,16 @@ class Api
         $this->varnish->configure($settings);
     }
 
+    public function getVarnishIntegrationConfig()
+    {
+        return $this->varnish->get();
+    }
+
+    public function setVarnishIntegrationConfig($settings)
+    {
+        $this->varnish->set($settings);
+    }
+
     public function enableExcludedUrls()
     {
         $this->excludedurls->enable();
@@ -386,5 +402,25 @@ class Api
     public function removeAdditionalDomain($domain)
     {
         $this->additionaldomains->remove($domain);
+    }
+
+    public function enableExcludes()
+    {
+        return $this->excludes->enable();
+    }
+
+    public function disableExcludes()
+    {
+        return $this->excludes->disable();
+    }
+
+    public function getExcludes()
+    {
+        return $this->excludes->get();
+    }
+
+    public function setExcludes($excludes)
+    {
+        return $this->excludes->set($excludes);
     }
 }

@@ -53,6 +53,114 @@ class Cache extends SignedBase {
         return $response;
     }
 
+    public function getMulti($urls, $userAgent, $cookies, $isAjax, $layout = 'default', $remoteAddr = NULL, $referrer = NULL) {
+        $this->isBacklogEnabled = false;
+        $path = 'cache/get/' . $this->siteId . '/' . $layout;
+        $remoteAddr = $remoteAddr ? $remoteAddr : NitroPack::getRemoteAddr();
+
+        $headers = array(
+            'X-Nitro-Visitor-Addr' => $remoteAddr,
+            'User-Agent' => $userAgent
+        );
+
+        $customCachePrefix = NitroPack::getCustomCachePrefix();
+        if ($customCachePrefix) {
+            $headers['X-Nitro-Cache-Prefix'] = $customCachePrefix;
+        }
+
+        if ($isAjax) {
+            $headers['X-Nitro-Ajax'] = 1;
+        }
+
+        if ($referrer) {
+            $headers['Referer'] = $referrer;
+        }
+
+        if ($this->isCacheWarmupRequest()) {
+            $headers['X-Nitro-Priority'] = 'LOW';
+        }
+
+        if (!empty($this->nitropack->getConfig()->LoopbackRequests)) {
+            $headers['X-Nitro-Loopback'] = '1';
+        }
+
+        $chunkSize = min(5, count($urls));
+        $cache = $this;
+        $retries = new \SplObjectStorage();
+        $httpMulti = new HttpClientMulti();
+        
+        $httpMulti->onSuccess(function($client) use ($path, &$urls, $httpMulti, $cache, $headers, $cookies) {
+            if ($urls) {
+                $_url = array_shift($urls);
+                $headers['X-Nitro-Url'] = $_url;
+
+                $httpClient = $cache->makeRequestAsync($path, $headers, $cookies);
+                $httpMulti->push($httpClient);
+            }
+        });
+
+        $httpMulti->onError(function($client, $exception) use ($httpMulti, $retries) {
+            if ($exception instanceof SocketReadTimedOutException) {
+                return;
+            }
+
+            if (!$retries->offsetExists($client)) {
+                $clientRetries = 0;
+            } else {
+                $clientRetries = $retries->offsetGet($client);
+            }
+
+            if ($clientRetries < 5) {
+                $retries->offsetSet($client, $clientRetries + 1);
+                $client->replay();
+                $httpMulti->push($client);
+            }
+        });
+
+        while ($urls && count($httpMulti->getClients()) < $chunkSize) {
+            $_url = array_shift($urls);
+            $headers['X-Nitro-Url'] = $_url;
+
+            try {
+                $httpClient = $this->makeRequestAsync($path, $headers, $cookies);
+            } catch (ServiceDownException $e) {
+                continue;
+            }
+
+            $httpMulti->push($httpClient);
+        }
+
+        $res = $httpMulti->readAll(); // This blocks untill all requests have finished
+
+        foreach ($res[1] as $failedRequest) {
+            $exception = $failedRequest[1];
+
+            if ($exception instanceof SocketReadTimedOutException) {
+                continue; // Ignore read timeouts
+            } else {
+                throw $exception;
+            }
+        }
+
+        $responses = [];
+        foreach ($res[0] as $httpResponse) {
+            $status = ResponseStatus::getStatus($httpResponse->getStatusCode());
+            if ($status !== ResponseStatus::OK) {
+                $this->throwException($httpResponse, 'Error while getting cache: %s');
+            }
+
+            $url = !empty($httpResponse->request_headers['x-nitro-url']) ? $httpResponse->request_headers['x-nitro-url'] : null;
+            if (!$url) {
+                $this->throwException($httpResponse, 'Error while getting cache, url header missing: %s');
+            }
+
+            $body = $httpResponse->getBody();
+            $responses[$url] = new Response($status, $body);
+        }
+
+        return $responses;
+    }
+
     public function getLastPurge() {
         $this->isBacklogEnabled = false;
         $path = 'cache/getlastpurge/' . $this->siteId;

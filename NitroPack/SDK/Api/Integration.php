@@ -12,7 +12,7 @@ class Integration extends Base {
     public function __construct($siteId, $siteSecret) {
         parent::__construct($siteId);
 
-        $this->baseUrl = IntegrationUrl::INTEGRATION_BASE;
+        $this->baseUrl = IntegrationUrl::getBaseUrl();
         $this->siteSecret = $siteSecret;
     }
 

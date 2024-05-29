@@ -18,6 +18,7 @@ class Pagecache
     protected $useInvalidated;
     private $urlPathVersion;
     private $cookiesProvider;
+    private $geotVariations;
 
     public static function getUrlDir($dataDir, $url, $useInvalidated = false, $pathVersion = 1)
     {
@@ -54,6 +55,7 @@ class Pagecache
         $this->useCompression = false;
         $this->useInvalidated = false;
         $this->cookiesProvider = NULL;
+        $this->geotVariations = new \stdClass;
         $this->setUrlPathVersion(1);
         $this->setReferer($referer);
     }
@@ -93,6 +95,12 @@ class Pagecache
         if ($this->referer) {
             $this->parent = new Pagecache($this->referer->getNormalized(), $this->Device->getUserAgent(), $this->cookies, $this->supportedCookies);
             $this->parent->setUrlPathVersion($this->urlPathVersion);
+            //$this->parent->setCookiesProvider($this->cookiesProvider);
+
+            if (count(get_object_vars($this->geotVariations)) > 0) {
+                $this->parent->setGeotVariations($this->geotVariations);
+            }
+
             if ($this->dataDir) {
                 $this->parent->setDataDir(dirname($this->dataDir));
             }
@@ -135,6 +143,11 @@ class Pagecache
     public function setCookiesProvider($provider)
     {
         $this->cookiesProvider = $provider;
+    }
+
+    public function setGeotVariations($geotVariations)
+    {
+        $this->geotVariations = $geotVariations;
     }
 
     public function hasCache()
@@ -182,8 +195,10 @@ class Pagecache
                     return true;
                 }
 
+                $expectedRev = !empty($cacheRevision) ? $cacheRevision : NULL;
+                $cachedRev = !empty($headers["x-nitro-rev"]) ? $headers["x-nitro-rev"] : NULL;
                 // Check if the revision has changed which makes cache file obsolete
-                if (!empty($headers["x-nitro-rev"]) && $cacheRevision && $cacheRevision != $headers["x-nitro-rev"]) {
+                if ($expectedRev && $expectedRev !== $cachedRev) {
                     return true;
                 }
             } catch (\Exception $e) {
@@ -355,6 +370,13 @@ class Pagecache
         foreach ($cookies as $cookieName => $cookieValue) {
             foreach ($this->supportedCookies as $cookie) {
                 if (preg_match('/' . NitroPack::wildcardToRegex($cookie) . '/', $cookieName)) {
+                    if (preg_match("/^nitro_geot_(.*)/", $cookieName, $matches)) {
+                        $geotComponent = $matches[1];
+                        if (property_exists($this->geotVariations, $geotComponent) && !empty($this->geotVariations->$geotComponent) && !in_array($cookieValue, $this->geotVariations->$geotComponent)) {
+                            $prefix .= $cookieName . '=' . $this->geotVariations->$geotComponent[0] . ';'; // Use the first variation as default
+                            continue;
+                        }
+                    }
                     $prefix .= $cookieName . '=' . $cookieValue . ';';
                 }
             }

@@ -61,4 +61,41 @@ class Varnish extends SignedBase
                 $this->throwException($httpResponse, 'Error while configure the Varnish integration: %s');
         }
     }
+
+    public function get()
+    {
+        $path = 'varnish/get/' . $this->siteId;
+
+        $httpResponse = $this->makeRequest($path, array(), array(), 'GET');
+
+        $status = ResponseStatus::getStatus($httpResponse->getStatusCode());
+        switch ($status) {
+            case ResponseStatus::OK:
+                $configSet = json_decode($httpResponse->getBody(), true);
+                return $configSet;
+            default:
+                $this->throwException($httpResponse, 'Error while getting Varnish config set: %s');
+        }
+    }
+
+    public function set($settings)
+    {
+        $path = 'varnish/set/' . $this->siteId;
+
+        if (empty($settings) || !is_array($settings)) {
+            $settings = array();
+        }
+
+        $post = empty($settings) ? array() : array('configSet' => $settings);
+
+        $httpResponse = $this->makeRequest($path, array(), array(), 'POST', $post);
+
+        $status = ResponseStatus::getStatus($httpResponse->getStatusCode());
+        switch ($status) {
+            case ResponseStatus::OK:
+                return true;
+            default:
+                $this->throwException($httpResponse, 'Error while setting Varnish config: %s');
+        }
+    }
 }

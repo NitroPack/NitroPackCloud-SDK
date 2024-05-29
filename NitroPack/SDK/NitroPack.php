@@ -5,7 +5,7 @@ use \NitroPack\Url\Url;
 use \NitroPack\SDK\Url\Embedjs;
 
 class NitroPack {
-    const VERSION = '0.55.3';
+    const VERSION = '0.56.0';
     const PAGECACHE_LOCK_EXPIRATION_TIME = 300; // in seconds
     private $dataDir;
     private $cachePath = array('data', 'pagecache');
@@ -80,8 +80,14 @@ class NitroPack {
         }
     }
 
+    public static function getExternalCustomPrefix() {
+        return !empty($_SERVER["HTTP_X_NITRO_CACHE_PREFIX"]) ? $_SERVER["HTTP_X_NITRO_CACHE_PREFIX"] : NULL;
+    }
+
     public static function addCustomCachePrefix($prefix = "") {
-        self::$cachePrefixes[] = $prefix;
+        if (!in_array($prefix, self::$cachePrefixes)) {
+            self::$cachePrefixes[] = $prefix;
+        }
     }
 
     public static function getCustomCachePrefix() {
@@ -157,10 +163,54 @@ class NitroPack {
 
         $this->pageCache = new Pagecache($this->url, $this->userAgent, $this->supportedCookiesFilter(self::getCookies()), $this->config->PageCache->SupportedCookies, $this->isAJAXRequest());
         $this->pageCache->setCookiesProvider([$this, "getPagecacheCookies"]);
+
+        if ($this->config->PageCache->Geot->Status) {
+            $this->pageCache->setGeotVariations($this->config->PageCache->Geot->Variations);
+        }
+
         if ($this->isAJAXRequest() && $this->isAllowedAJAXUrl($this->url) && !empty($_SERVER["HTTP_REFERER"]) && !$this->isAllowedStandaloneAJAXUrl($url)) {
             $refererInfo = new Url($_SERVER["HTTP_REFERER"]);
             $this->pageCache->setReferer($refererInfo->getNormalized());
         }
+
+        if ($this->isServiceRequest()) {
+            $customPrefix = self::getExternalCustomPrefix();
+            if ($customPrefix) {
+                self::addCustomCachePrefix($customPrefix);
+            }
+        } else {
+            if (!!$this->config->LanguageVary->Status) {
+                $lang = $this->config->LanguageVary->DefaultLanguage;
+                $clientLanguagePreference = !empty($_SERVER["HTTP_ACCEPT_LANGUAGE"]) ? $_SERVER["HTTP_ACCEPT_LANGUAGE"] : "";
+                $languagePreferences = $this->parseLanguagePreferences($clientLanguagePreference);
+                $possibilities = [];
+                foreach ($languagePreferences as $pref) {
+                    [$langCode, $langVariant, $weight] = $pref;
+
+                    if ($langCode === "*") {
+                        $langTries = [$this->config->LanguageVary->DefaultLanguage];
+                    } else {
+                        $langTries = ["$langCode-$langVariant", $langCode];
+                    }
+
+                    foreach ($langTries as $langTry) {
+                        if (in_array($langTry, $this->config->LanguageVary->AvailableLanguages)) {
+                            $possibilities[] = [$langTry, $weight];
+                        }
+                    }
+                }
+
+                if (!empty($possibilities)) {
+                    usort($possibilities, function($a, $b) {
+                        return $a[1] < $b[1] ? 1 : -1;
+                    });
+                    $lang = $possibilities[0][0];
+                }
+
+                self::addCustomCachePrefix("lang_$lang");
+            }
+        }
+
         if (!empty($this->config->URLPathVersion)) {
             $this->pageCache->setUrlPathVersion($this->config->URLPathVersion);
         }
@@ -173,6 +223,23 @@ class NitroPack {
         $this->pageCache->setDataDir($this->getCacheDir());
 
         $this->useCompression = false;
+    }
+
+    private function parseLanguagePreferences($languagePreferences) {
+        $preferenceParts = array_filter(array_map("trim", explode(",", $languagePreferences)));
+        $preferences = [];
+        foreach ($preferenceParts as $lang) {
+            // Parse variants of the form en-US;q=0.8, en-US, en;q=0.8, en, *;q=0.8, *
+            if (preg_match("/^(?<code>[a-z\*]+)(-(?<variant>[A-Z]+))?(;q=(?<weight>[\d\.]+))?$/", $lang, $matches)) {
+                $langCode = $matches["code"];
+                $langVariant = !empty($matches["variant"]) ? $matches["variant"] : "";
+                $weight = !empty($matches["weight"]) ? (float)$matches["weight"] : 1;
+            }
+
+            $preferences[] = [$langCode, $langVariant, $weight];
+        }
+
+        return $preferences;
     }
 
     public function setReferer($referer) {
@@ -409,6 +476,93 @@ class NitroPack {
         }
     }
 
+    public function hasRemoteCacheMulti($urls, $layout, $checkIfRequestIsAllowed = true) {
+        if ($this->backlog->exists()) return false;
+
+        foreach ($urls as $url) {
+            if (
+                !$this->isAllowedUrl($url) ||
+                ($checkIfRequestIsAllowed && !$this->isAllowedRequest()) ||
+                ($this->pageCache->getParent() && !$this->pageCache->getParent()->hasCache()) ||    // This check is works correctly despite the fact that it doesn't check the current iteration's url because the check is based on headers and all of the headers for the URLs are the same for batched webhooks
+                $this->isPageCacheLocked()
+            ) return false;
+        }        
+
+        $hasCache = true;   // hasCache is false if even one of the URLs doesn't have a cache
+        $responses = $this->api->getCacheMulti($urls, $this->userAgent, $this->supportedCookiesFilter(self::getCookies()), $this->isAJAXRequest(), $layout, $this->referer);
+        
+        $originalURL = $this->url;
+        $originalPageCache = $this->pageCache;
+
+        foreach ($responses as $url => $resp) {
+            // Overwrite the url
+            $urlInfo = new Url($url);
+            $this->url = $urlInfo->getNormalized();
+    
+            // Overwrite the page cache
+            $this->pageCache = new Pagecache($this->url, $this->userAgent, $this->supportedCookiesFilter(self::getCookies()), $this->config->PageCache->SupportedCookies, $this->isAJAXRequest());
+            $this->pageCache->setCookiesProvider([$this, "getPagecacheCookies"]);
+
+            if ($this->config->PageCache->Geot->Status) {
+                $this->pageCache->setGeotVariations($this->config->PageCache->Geot->Variations);
+            }
+
+            if ($this->isAJAXRequest() && $this->isAllowedAJAXUrl($this->url) && !empty($_SERVER["HTTP_REFERER"]) && !$this->isAllowedStandaloneAJAXUrl($url)) {
+                $refererInfo = new Url($_SERVER["HTTP_REFERER"]);
+                $this->pageCache->setReferer($refererInfo->getNormalized());
+            }
+            if (!empty($this->config->URLPathVersion)) {
+                $this->pageCache->setUrlPathVersion($this->config->URLPathVersion);
+            }
+            $this->pageCache->setDataDir($this->getCacheDir());
+
+            // Process the response
+            if ($resp->getStatus() == Api\ResponseStatus::OK) {// We have cache response
+
+                // Check for invalidated cache and delete it if such is found
+                $this->pageCache->useInvalidated(true);
+                if ($this->pageCache->hasCache()) {
+                    $path = $this->pageCache->getCachefilePath();
+                    Filesystem::deleteFile($path);
+                    Filesystem::deleteFile($path . ".gz");
+                    Filesystem::deleteFile($path . ".stale");
+                    Filesystem::deleteFile($path . ".stale.gz");
+                    if (Filesystem::isDirEmpty(dirname($path))) {
+                        Filesystem::deleteDir(dirname($path));
+                    }
+                }
+                $this->pageCache->useInvalidated(false);
+                // End of check
+
+                list($headers, $content) = Filesystem::explodeByHeaders($resp->getBody());
+                $this->pageCache->setContent($content, $headers);
+                continue;
+            } else {
+                // The goal is to serve cache at all times even when it is slightly outdated. This approach should be ok because new cache has been requested and it should be ready soon
+                if ($this->pageCache->hasCache()) {
+                    continue;
+                } else {
+                    // Check for invalidated cache
+                    $this->pageCache->useInvalidated(true);
+                    if ($this->hasLocalCache(false)) {
+                        continue;
+                    } else {
+                        $this->pageCache->useInvalidated(false);
+                    }
+                }
+    
+                $hasCache = false;
+                continue;
+            }
+        }
+
+        // Restore the url and page cache
+        $this->url = $originalURL;
+        $this->pageCache = $originalPageCache;
+        
+        return $hasCache;
+    }
+
     public function invalidateCache($url = NULL, $tag = NULL, $reason = NULL) {
         return $this->purgeCache($url, $tag, PurgeType::INVALIDATE | PurgeType::PAGECACHE_ONLY, $reason);
     }
@@ -592,8 +746,12 @@ class NitroPack {
     }
 
     public function purgeProxyCache($url = NULL) {
-        if (!empty($this->config->CacheIntegrations)) {
-            if (!empty($this->config->CacheIntegrations->Varnish)) {
+        if (empty($this->config->CacheIntegrations)) {
+            return;
+        }
+
+        if (!empty($this->config->CacheIntegrations->Varnish)) {
+            if (empty($this->config->CacheIntegrations->Varnish->PurgeConfigSet)) {
                 if ($url) {
                     $url = $this->normalizeUrl($url);
                     $varnish = new Integrations\Varnish(
@@ -610,21 +768,47 @@ class NitroPack {
                     );
                     $varnish->purge($this->config->CacheIntegrations->Varnish->PurgeAllUrl);
                 }
+
+                return;
             }
 
-            //if (!empty($this->config->CacheIntegrations->LiteSpeed) && php_sapi_name() !== "cli") {
-            //    if ($url) {
-            //        $urlObj = new Url($url);
-            //        $liteSpeedPath = $urlObj->getPath();
-            //        if ($urlObj->getQuery()) {
-            //            $liteSpeedPath .= "?" . $urlObj->getQuery();
-            //        }
-            //        header("X-LiteSpeed-Purge: $liteSpeedPath", false);
-            //    } else {
-            //        header("X-LiteSpeed-Purge: *", false);
-            //    }
-            //}
+            foreach ($this->config->CacheIntegrations->Varnish->PurgeConfigSet as $purgeSet) {
+                if ($url) {
+                    foreach ($purgeSet->PurgeSingleHeadersTemplates as $headerTemplateTuple) {
+                        $this->varnishProxyCacheHeaders[$headerTemplateTuple->HeaderName] = $this->valueFromTemplate($url, $headerTemplateTuple->HeaderTemplate);
+                    }
+
+                    $varnish = new Integrations\Varnish(
+                        null,
+                        $purgeSet->PurgeSingleMethod,
+                        $this->varnishProxyCacheHeaders
+                    );
+
+                    $purgeUrl = $this->valueFromTemplate($url, $purgeSet->PurgeSingleTemplate);
+                    $varnish->purge($purgeUrl, true);
+                } else {
+                    $varnish = new Integrations\Varnish(
+                        null,
+                        $purgeSet->PurgeAllMethod,
+                        $this->varnishProxyCacheHeaders
+                    );
+                    $varnish->purge($purgeSet->PurgeAllUrl, true);
+                }
+            }
         }
+
+        //if (!empty($this->config->CacheIntegrations->LiteSpeed) && php_sapi_name() !== "cli") {
+        //    if ($url) {
+        //        $urlObj = new Url($url);
+        //        $liteSpeedPath = $urlObj->getPath();
+        //        if ($urlObj->getQuery()) {
+        //            $liteSpeedPath .= "?" . $urlObj->getQuery();
+        //        }
+        //        header("X-LiteSpeed-Purge: $liteSpeedPath", false);
+        //    } else {
+        //        header("X-LiteSpeed-Purge: *", false);
+        //    }
+        //}
     }
 
     public function isAllowedUrl($url) {
@@ -657,12 +841,16 @@ class NitroPack {
         return true;
     }
 
+    public function isServiceRequest() {
+        return isset($_SERVER["HTTP_X_NITROPACK_REQUEST"]);
+    }
+
     public function isAllowedRequest($allowServiceRequests = false) {
         if (($this->isAJAXRequest() && !$this->isAllowedAJAX()) || !($this->isRequestMethod("GET") || $this->isRequestMethod("HEAD"))) {// TODO: Allow URLs which match a pattern in the AJAX URL whitelist
             return false; // don't cache ajax or not GET requests
         }
 
-        if (!$allowServiceRequests && isset($_SERVER["HTTP_X_NITROPACK_REQUEST"])) { // Skip requests coming from NitroPack
+        if (!$allowServiceRequests && $this->isServiceRequest()) { // Skip requests coming from NitroPack
             return false;
         }
 
@@ -692,7 +880,25 @@ class NitroPack {
             }
         }
 
+        // Deactivate NitroPack for a desired % of journeys
+        if ($this->config->TestImpact->Status) {
+            $impactGroup = $this->getImpactGroupValue();
+            if ($impactGroup <= $this->config->TestImpact->ThresholdPercentage) {
+                return false;
+            }
+        }
+
         return true;
+    }
+
+    private function getImpactGroupValue() {
+        if (!empty($_COOKIE['nitroImpactGroup'])) {
+            return $_COOKIE['nitroImpactGroup'];
+        } else {
+            $impactGroup = mt_rand(1,100);
+            setcookie('nitroImpactGroup', $impactGroup, time() + 86400, '/', $_SERVER['HTTP_HOST']);
+            return $impactGroup;
+        }
     }
 
     public function isAllowedBrowser() {
@@ -993,5 +1199,30 @@ class NitroPack {
     private function normalizeUrl($url) {
         $urlObj = new Url($url);
         return $urlObj->getNormalized();
+    }
+
+    /**
+     * Substitutes values from a template based on URL components
+     * @param string $url The URL, from which to extract substitution values
+     * @param string $template The template to use
+     * @return string
+     */
+    private function valueFromTemplate($url, $template) {
+        $urlObj = new Url($url);
+
+        $proxyPurgeTemplate = array
+        (
+            '{{targetUrl}}' => $urlObj->getNormalized(),
+            '{{targetProtocol}}' => $urlObj->getScheme(),
+            '{{targetHost}}' => $urlObj->getHost(),
+            '{{targetPath}}' => $urlObj->getPath(),
+            '{{targetQuery}}' => $urlObj->getQuery(),
+        );
+
+        $templateKeys = array_keys($proxyPurgeTemplate);
+        $templateVals = array_values($proxyPurgeTemplate);
+        $constructed = str_replace($templateKeys, $templateVals, $template);
+        
+        return $constructed;
     }
 }

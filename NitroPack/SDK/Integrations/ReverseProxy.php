@@ -27,7 +27,20 @@ class ReverseProxy {
         $this->headers[$name] = $value;
     }
 
-    public function purge($url) {
+    public function purge($url, $newPurgeScheme = false) {
+        if ($newPurgeScheme) {
+            $client = new HttpClient($url);
+            $client->doNotDownload = true;
+
+            foreach ($this->headers as $name => $value) {
+                $client->setHeader($name, $value);
+            }
+
+            $client->fetch(true, $this->purgeMethod);
+
+            return true;
+        }
+
         if (empty($this->serverList)) return false;
 
         $httpMulti = new HttpClientMulti();

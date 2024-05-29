@@ -2,8 +2,16 @@
 namespace NitroPack\SDK;
 
 class IntegrationUrl {
-    const INTEGRATION_BASE = 'https://nitropack.io/integration/';
     private $path;
+
+    public static function getBaseUrl() {
+        $hostname = getenv("NITROPACKIO_HOST");
+        if (!$hostname) {
+            $hostname = "nitropack.io";
+        }
+
+        return "https://{$hostname}/integration/";
+    }
 
     public function __construct($widget, $siteId, $siteSecret, $version = null, $additional_params = array()) {
         $timestamp = time();
@@ -28,7 +36,7 @@ class IntegrationUrl {
     }
 
     public function getUrl() {
-        return self::INTEGRATION_BASE . $this->path;
+        return self::getBaseUrl() . $this->path;
     }
 
     public function getPath() {
