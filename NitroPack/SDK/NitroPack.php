@@ -5,7 +5,7 @@ use \NitroPack\Url\Url;
 use \NitroPack\SDK\Url\Embedjs;
 
 class NitroPack {
-    const VERSION = '0.56.0';
+    const VERSION = '0.56.1';
     const PAGECACHE_LOCK_EXPIRATION_TIME = 300; // in seconds
     private $dataDir;
     private $cachePath = array('data', 'pagecache');
